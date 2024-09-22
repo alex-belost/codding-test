@@ -1,0 +1,18 @@
+<label
+  class="has-[:checked]:ring-2 ring-indigo-500 h-10 flex cursor-pointer items-center bg-white/5 justify-center rounded-md px-3 py-3 text-sm font-semibold focus:outline-none sm:flex-1"
+  [class.opacity-30]="isDisabled"
+>
+  <input
+    class="sr-only"
+    type="radio"
+    [attr.name]="name"
+    [value]="value"
+    [checked]="internalValue === value"
+    [disabled]="isDisabled"
+    (change)="onInputChange(value)"
+  />
+
+  <span class="text-white">
+    <ng-content></ng-content>
+  </span>
+</label>

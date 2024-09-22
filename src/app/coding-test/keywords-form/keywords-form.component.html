@@ -1,0 +1,66 @@
+<form class="space-y-6" [formGroup]="form">
+  <fieldset aria-label="Keywords">
+    <label
+      class="grid gap-2 text-sm font-medium leading-6 text-white"
+      [class.opacity-30]="isLoading"
+    >
+      <span>Keywords</span>
+
+      <span class="grid gap-2">
+        <input
+          formControlName="keywords"
+          type="text"
+          class="block w-full h-10 rounded-md border-0 bg-white/5 py-1.5 text-white shadow-sm ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-inset focus:ring-indigo-500 sm:text-sm sm:leading-6"
+        />
+
+        <ng-container *ngIf="isKeywordsChanged$ | async as changed">
+          <app-status-change-badge
+            [oldValue]="this.bufferForm[0][changed]"
+            [newValue]="this.bufferForm[1][changed]"
+          ></app-status-change-badge>
+        </ng-container>
+      </span>
+    </label>
+  </fieldset>
+
+  <fieldset aria-label="Separator">
+    <div class="flex items-center justify-between">
+      <div class="text-sm font-medium leading-6 text-white">Separator</div>
+    </div>
+
+    <div class="grid gap-2">
+      <div class="flex *:w-full mt-2 gap-3">
+        <app-radio-button
+          *ngFor="let option of separatorOptions"
+          name="separator"
+          formControlName="separator"
+          [value]="option.value"
+        >
+          {{ option.label }}
+        </app-radio-button>
+      </div>
+
+      <ng-container *ngIf="isSeparatorChanged$ | async as changed">
+        <app-status-change-badge
+          [oldValue]="this.bufferForm[0][changed]"
+          [newValue]="this.bufferForm[1][changed]"
+        ></app-status-change-badge>
+      </ng-container>
+    </div>
+  </fieldset>
+
+  <fieldset area-label="Reset separator">
+    <app-switch-button formControlName="reset">
+      Reset separator
+    </app-switch-button>
+  </fieldset>
+
+  <div class="mt-10 flex justify-end gap-x-6">
+    <a
+      routerLink="/"
+      class="rounded-md bg-indigo-500 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-400"
+    >
+      Back
+    </a>
+  </div>
+</form>
