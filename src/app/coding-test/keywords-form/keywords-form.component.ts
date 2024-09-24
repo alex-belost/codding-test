@@ -1,14 +1,17 @@
 import {Component, OnDestroy} from '@angular/core';
 import {FormGroup} from '@angular/forms';
 import {
+  concatMap,
   debounceTime,
   filter,
-  interval,
   Observable,
+  retry,
   startWith,
   Subject,
   switchMap,
+  takeLast,
   takeUntil,
+  tap,
 } from 'rxjs';
 import {SEPARATOR_OPTIONS} from '../../app.constants';
 import {KeywordsHttpService} from '../../services/keywords-http.service';
@@ -30,9 +33,9 @@ export class KeywordsDataComponent implements OnDestroy {
   public readonly form!: FormGroup;
 
   private readonly destroy$ = new Subject<void>();
+  private readonly dataQueue$ = new Subject<KeywordsData>();
 
-  private timestampClient = Date.now();
-  private timestampServer = 0;
+  private isUserEditing = false;
 
   public get bufferForm(): BufferKeywordsData {
     return this.keywords.bufferForm;
@@ -52,52 +55,32 @@ export class KeywordsDataComponent implements OnDestroy {
   ) {
     this.form = this.keywords.getForm();
 
-    const interval$ = interval(800);
-
-    interval$
-      .pipe(
-        takeUntil(this.destroy$),
-        startWith(null),
-        filter(() => this.timestampClient > this.timestampServer),
-        switchMap(() => this.keywordsHttp.getData$())
-      )
-      .subscribe(data => {
-        const keys = Object.keys(data) as KeywordsDataKey[];
-
-        keys.forEach(key => {
-          const control = this.form.get(key);
-
-          if (!control) {
-            return;
-          }
-
-          if (!control.dirty) {
-            control.setValue(data[key], {emitEvent: false});
-          }
-        });
-
-        if (!this.form.dirty) {
-          this.timestampServer = Date.now();
-          this.keywords.handleChanges(data);
-        }
-
-        this.form.markAsPristine();
-      });
-
     this.form.valueChanges
       .pipe(
-        debounceTime(400),
-        switchMap((data: KeywordsData) => {
-          this.keywords.hideNotice();
-
-          return this.keywordsHttp.setData$({
-            ...data,
-            keywords: data.keywords.trim(),
-          });
-        })
+        startWith(this.form.value),
+        tap(() => (this.isUserEditing = true)),
+        debounceTime(600),
+        tap(() => (this.isUserEditing = false)),
+        takeUntil(this.destroy$)
       )
-      .subscribe(() => {
-        this.timestampClient = Date.now();
+      .subscribe(data => this.dataQueue$.next(data));
+
+    this.dataQueue$
+      .pipe(
+        retry(2),
+        filter(() => !this.isUserEditing),
+        concatMap(data =>
+          this.keywordsHttp.setData$(data).pipe(
+            switchMap(() => this.keywordsHttp.getData$()),
+            takeLast(1)
+          )
+        ),
+        takeUntil(this.destroy$)
+      )
+      .subscribe(data => {
+        if (!this.isUserEditing) {
+          this.form.patchValue(data, {emitEvent: false});
+        }
       });
   }
 
