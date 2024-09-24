@@ -1,12 +1,17 @@
 import {Component, OnDestroy} from '@angular/core';
 import {FormGroup} from '@angular/forms';
 import {
+  concatMap,
   debounceTime,
-  distinctUntilChanged,
+  filter,
   Observable,
+  retry,
   startWith,
   Subject,
   switchMap,
+  takeLast,
+  takeUntil,
+  tap,
 } from 'rxjs';
 import {SEPARATOR_OPTIONS} from '../../app.constants';
 import {KeywordsHttpService} from '../../services/keywords-http.service';
@@ -26,11 +31,11 @@ export class KeywordsDataComponent implements OnDestroy {
   public readonly separatorOptions: RadioButtonOption[] = SEPARATOR_OPTIONS;
 
   public readonly form!: FormGroup;
-  public readonly formChanges$ = new Subject<(keyof KeywordsData)[] | null>();
-
-  public isLoading = true;
 
   private readonly destroy$ = new Subject<void>();
+  private readonly dataQueue$ = new Subject<KeywordsData>();
+
+  private isUserEditing = false;
 
   public get bufferForm(): BufferKeywordsData {
     return this.keywords.bufferForm;
@@ -52,27 +57,30 @@ export class KeywordsDataComponent implements OnDestroy {
 
     this.form.valueChanges
       .pipe(
-        debounceTime(800),
-        distinctUntilChanged(),
-        switchMap((data: KeywordsData) => {
-          this.form.disable({emitEvent: false});
-          this.isLoading = true;
-          this.keywords.hideNotice();
+        startWith(this.form.value),
+        tap(() => (this.isUserEditing = true)),
+        debounceTime(600),
+        tap(() => (this.isUserEditing = false)),
+        takeUntil(this.destroy$)
+      )
+      .subscribe(data => this.dataQueue$.next(data));
 
-          return this.keywordsHttp.setData$({
-            ...data,
-            keywords: data.keywords.trim(),
-          });
-        }),
-        startWith(null),
-        switchMap(() => this.keywordsHttp.getData$())
+    this.dataQueue$
+      .pipe(
+        retry(2),
+        filter(() => !this.isUserEditing),
+        concatMap(data =>
+          this.keywordsHttp.setData$(data).pipe(
+            switchMap(() => this.keywordsHttp.getData$()),
+            takeLast(1)
+          )
+        ),
+        takeUntil(this.destroy$)
       )
       .subscribe(data => {
-        this.form.patchValue(data, {emitEvent: false});
-        this.form.enable({emitEvent: false});
-        this.isLoading = false;
-
-        this.keywords.handleChanges(data);
+        if (!this.isUserEditing) {
+          this.form.patchValue(data, {emitEvent: false});
+        }
       });
   }
 
