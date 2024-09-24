@@ -2,11 +2,13 @@ import {Component, OnDestroy} from '@angular/core';
 import {FormGroup} from '@angular/forms';
 import {
   debounceTime,
-  distinctUntilChanged,
+  filter,
+  interval,
   Observable,
   startWith,
   Subject,
   switchMap,
+  takeUntil,
 } from 'rxjs';
 import {SEPARATOR_OPTIONS} from '../../app.constants';
 import {KeywordsHttpService} from '../../services/keywords-http.service';
@@ -26,11 +28,11 @@ export class KeywordsDataComponent implements OnDestroy {
   public readonly separatorOptions: RadioButtonOption[] = SEPARATOR_OPTIONS;
 
   public readonly form!: FormGroup;
-  public readonly formChanges$ = new Subject<(keyof KeywordsData)[] | null>();
-
-  public isLoading = true;
 
   private readonly destroy$ = new Subject<void>();
+
+  private timestampClient = Date.now();
+  private timestampServer = 0;
 
   public get bufferForm(): BufferKeywordsData {
     return this.keywords.bufferForm;
@@ -50,29 +52,52 @@ export class KeywordsDataComponent implements OnDestroy {
   ) {
     this.form = this.keywords.getForm();
 
+    const interval$ = interval(800);
+
+    interval$
+      .pipe(
+        takeUntil(this.destroy$),
+        startWith(null),
+        filter(() => this.timestampClient > this.timestampServer),
+        switchMap(() => this.keywordsHttp.getData$())
+      )
+      .subscribe(data => {
+        const keys = Object.keys(data) as KeywordsDataKey[];
+
+        keys.forEach(key => {
+          const control = this.form.get(key);
+
+          if (!control) {
+            return;
+          }
+
+          if (!control.dirty) {
+            control.setValue(data[key], {emitEvent: false});
+          }
+        });
+
+        if (!this.form.dirty) {
+          this.timestampServer = Date.now();
+          this.keywords.handleChanges(data);
+        }
+
+        this.form.markAsPristine();
+      });
+
     this.form.valueChanges
       .pipe(
-        debounceTime(800),
-        distinctUntilChanged(),
+        debounceTime(400),
         switchMap((data: KeywordsData) => {
-          this.form.disable({emitEvent: false});
-          this.isLoading = true;
           this.keywords.hideNotice();
 
           return this.keywordsHttp.setData$({
             ...data,
             keywords: data.keywords.trim(),
           });
-        }),
-        startWith(null),
-        switchMap(() => this.keywordsHttp.getData$())
+        })
       )
-      .subscribe(data => {
-        this.form.patchValue(data, {emitEvent: false});
-        this.form.enable({emitEvent: false});
-        this.isLoading = false;
-
-        this.keywords.handleChanges(data);
+      .subscribe(() => {
+        this.timestampClient = Date.now();
       });
   }
 
